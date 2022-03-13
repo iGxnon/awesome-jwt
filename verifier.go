@@ -23,6 +23,7 @@ type Claims interface {
 
 type Verifier struct {
 	p                   *jwt.Parser
+	defaultKey          interface{}
 	skipClaimVerify     bool
 	useJSONNumber       bool
 	validSigningMethods []string
@@ -47,6 +48,13 @@ func VerifyAudOption(aud string) VerifierOption {
 	}
 }
 
+func VerifyDefaultKeyOption(key interface{}) VerifierOption {
+	return func(verifier *Verifier) *Verifier {
+		verifier.defaultKey = key
+		return verifier
+	}
+}
+
 func VerifyIssOption(iss string) VerifierOption {
 	return func(verifier *Verifier) *Verifier {
 		verifier.verifyIss = iss
@@ -55,11 +63,11 @@ func VerifyIssOption(iss string) VerifierOption {
 }
 
 func AdmitMethodsVerifyOption(methods ...jwt.SigningMethod) VerifierOption {
+	algs := make([]string, len(methods))
+	for i, method := range methods {
+		algs[i] = method.Alg()
+	}
 	return func(verifier *Verifier) *Verifier {
-		algs := make([]string, len(methods))
-		for i, method := range methods {
-			algs[i] = method.Alg()
-		}
 		verifier.validSigningMethods = algs
 		return verifier
 	}
@@ -158,7 +166,7 @@ func (v *Verifier) verifyTokenStr(jwtStr string) (*jwt.Token, []string, error) {
 	return token, parts, nil
 }
 
-func (v *Verifier) VerifySigning(jwtStr string, key interface{}) error {
+func (v *Verifier) Verify(jwtStr string, key interface{}) error {
 	token, parts, err := v.verifyTokenStr(jwtStr)
 	if err != nil {
 		return err
@@ -166,7 +174,18 @@ func (v *Verifier) VerifySigning(jwtStr string, key interface{}) error {
 	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], key)
 }
 
-func (v *Verifier) VerifySigningWithKid(jwtStr string) error {
+func (v *Verifier) VerifyWithDefaultKey(jwtStr string) error {
+	if v.defaultKey == nil {
+		return errors.New("no default key")
+	}
+	token, parts, err := v.verifyTokenStr(jwtStr)
+	if err != nil {
+		return err
+	}
+	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], v.defaultKey)
+}
+
+func (v *Verifier) VerifyWithKid(jwtStr string) error {
 	token, parts, err := v.verifyTokenStr(jwtStr)
 	if err != nil {
 		return err
@@ -201,7 +220,7 @@ func (v *Verifier) VerifySigningWithKid(jwtStr string) error {
 
 	path := iss + JWKsRelativePath
 
-	publicKey, err := ParsePathToKey(path, keyId)
+	publicKey, _, err := ParsePathToKey(path, keyId)
 
 	if err != nil {
 		return err

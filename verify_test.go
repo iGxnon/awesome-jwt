@@ -62,14 +62,14 @@ func TestVerify(t *testing.T) {
 			if datum.key == nil {
 				datum.key, _ = jwt.ParseRSAPublicKeyFromPEM([]byte(defaultPublicKey))
 			}
-			err := verifier.VerifySigning(datum.tokenStr, datum.key)
+			err := verifier.Verify(datum.tokenStr, datum.key)
 			if (err != nil) != datum.wantErr {
 				t.Errorf("error while verify %v", datum)
 			}
 			continue
 		}
 		// 使用 kid，无需指定 key
-		err := verifier.VerifySigningWithKid(datum.tokenStr)
+		err := verifier.VerifyWithKid(datum.tokenStr)
 		if (err != nil) != datum.wantErr {
 			t.Errorf("error while verify %v", datum)
 		}
