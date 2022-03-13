@@ -39,6 +39,8 @@ var (
 	UseJSONNumberVerifyOption VerifierOption // 使用 JSON number decoder
 
 	UseMapClaimsOption VerifierOption // 使用 MapClaims 来解析(默认情况下不限制)
+
+	AcceptNoneSigningOption VerifierOption // 使用这个 Option 后，当 jwt 当 alg 为 none 且使用 VerifyWithDefaultKey 时才有效(认证通过)，但不推荐使用
 )
 
 func VerifyAudOption(aud string) VerifierOption {
@@ -48,6 +50,7 @@ func VerifyAudOption(aud string) VerifierOption {
 	}
 }
 
+// VerifyDefaultKeyOption 使用 AcceptNoneSigningOption 后不能使用这个
 func VerifyDefaultKeyOption(key interface{}) VerifierOption {
 	return func(verifier *Verifier) *Verifier {
 		verifier.defaultKey = key
@@ -98,6 +101,11 @@ func init() {
 
 	UseMapClaimsOption = func(verifier *Verifier) *Verifier {
 		verifier.useClaims = jwt.MapClaims{}
+		return verifier
+	}
+
+	AcceptNoneSigningOption = func(verifier *Verifier) *Verifier {
+		verifier.defaultKey = jwt.UnsafeAllowNoneSignatureType
 		return verifier
 	}
 }
@@ -170,6 +178,11 @@ func (v *Verifier) Verify(jwtStr string, key interface{}) error {
 	token, parts, err := v.verifyTokenStr(jwtStr)
 	if err != nil {
 		return err
+	}
+
+	// 防止这里使用 jwt.UnsafeAllowNoneSignatureType
+	if _, ok := key.(string); ok {
+		return errors.New("key cannot be string")
 	}
 	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], key)
 }

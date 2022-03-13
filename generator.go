@@ -6,6 +6,24 @@ import (
 	"strings"
 )
 
+var (
+	SigningMethodES256 = jwt.SigningMethodES256
+	SigningMethodES384 = jwt.SigningMethodES384
+	SigningMethodES512 = jwt.SigningMethodES512
+
+	SigningMethodRS256 = jwt.SigningMethodRS256
+	SigningMethodRS384 = jwt.SigningMethodRS384
+	SigningMethodRS512 = jwt.SigningMethodRS512
+
+	SigningMethodHS256 = jwt.SigningMethodHS256
+	SigningMethodHS384 = jwt.SigningMethodHS384
+	SigningMethodHS512 = jwt.SigningMethodHS512
+
+	SigningMethodPS256 = jwt.SigningMethodPS256
+	SigningMethodPS384 = jwt.SigningMethodPS384
+	SigningMethodPS512 = jwt.SigningMethodPS512
+)
+
 type Generator struct {
 	t   *jwt.Token
 	key interface{}
