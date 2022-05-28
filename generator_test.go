@@ -38,10 +38,11 @@ CKuHRG+AP579dncdUnOMvfXOtkdM4vk0+hWASBQzM9xzVcztCa+koAugjVaLS9A+
 -----END RSA PRIVATE KEY-----
 `
 
-func TestSign(t *testing.T) {
+func TestSignWithKid(t *testing.T) {
 	privateKey, _ := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKey))
+	option := GenOption{}
 	generator := NewGenerator(
-		GeneratorOptionWithKeyId(
+		option.WithKeyId(
 			"1ziyHTmy3_804C9McPCGTDfabB58A4CedoVkupywUyM",
 			"https://steam-talk.authing.cn/oidc",
 			privateKey,
@@ -53,5 +54,33 @@ func TestSign(t *testing.T) {
 	}
 	if generator.t.Header["kid"] != "1ziyHTmy3_804C9McPCGTDfabB58A4CedoVkupywUyM" {
 		t.Error(errors.New("kid changed"))
+	}
+}
+
+func BenchmarkSignHS256(b *testing.B) {
+
+	option := GenOption{}
+	generator := NewGenerator(option.WithKey([]byte("114514"), jwt.SigningMethodHS256))
+
+	for i := 0; i < b.N; i++ {
+		_, err := generator.Sign(jwt.StandardClaims{ExpiresAt: time.Now().Unix()})
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkSignRS256(b *testing.B) {
+	privateKey, _ := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKey))
+	option := GenOption{}
+	generator := NewGenerator(option.WithKey(privateKey, jwt.SigningMethodRS256))
+	for i := 0; i < b.N; i++ {
+		_, err := generator.Sign(jwt.StandardClaims{
+			ExpiresAt: time.Now().Unix(),
+			IssuedAt:  time.Now().Unix(),
+		})
+		if err != nil {
+			panic(err)
+		}
 	}
 }

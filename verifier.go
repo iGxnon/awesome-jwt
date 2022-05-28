@@ -12,6 +12,11 @@ const (
 	JWKsRelativePath = ".well-known/jwks.json"
 )
 
+type Token = jwt.Token
+
+type StandClaims = jwt.StandardClaims
+type MapClaims = jwt.MapClaims
+
 type Claims interface {
 	Valid() error
 	VerifyAudience(cmp string, req bool) bool
@@ -32,87 +37,108 @@ type Verifier struct {
 	verifyIss           string     // 验证 Iss   仅当 skipClaimVerify = false 才启用
 }
 
-type VerifierOption func(verifier *Verifier) *Verifier
+type VerOption struct {
+	ops []verifierOption
+}
 
-var (
-	SkipClaimVerifyOption     VerifierOption // 不去验证 Claims 的正确性，即不验证 jwt 是否过期或者是否启用
-	UseJSONNumberVerifyOption VerifierOption // 使用 JSON number decoder
+type verifierOption func(verifier *Verifier) *Verifier
 
-	UseMapClaimsOption VerifierOption // 使用 MapClaims 来解析(默认情况下不限制)
-
-	AcceptNoneSigningOption VerifierOption // 使用这个 Option 后，当 jwt 当 alg 为 none 且使用 VerifyWithDefaultKey 时才有效(认证通过)，但不推荐使用
-)
-
-func VerifyAudOption(aud string) VerifierOption {
-	return func(verifier *Verifier) *Verifier {
+// WithAudience 验证 jwt 中的 aud
+func (v *VerOption) WithAudience(aud string) *VerOption {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
 		verifier.verifyAud = aud
 		return verifier
-	}
+	})
+	return v
 }
 
-// VerifyDefaultKeyOption 使用 AcceptNoneSigningOption 后不能使用这个
-func VerifyDefaultKeyOption(key interface{}) VerifierOption {
-	return func(verifier *Verifier) *Verifier {
+// WithDefaultKey 使用 AcceptNoneSigningOption 后不能使用这个
+func (v *VerOption) WithDefaultKey(key interface{}) *VerOption {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
 		verifier.defaultKey = key
 		return verifier
-	}
+	})
+	return v
 }
 
-func VerifyIssOption(iss string) VerifierOption {
-	return func(verifier *Verifier) *Verifier {
+// WithIssuer 验证 jwt 中的 iss
+func (v *VerOption) WithIssuer(iss string) *VerOption {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
 		verifier.verifyIss = iss
 		return verifier
-	}
+	})
+	return v
 }
 
-func AdmitMethodsVerifyOption(methods ...jwt.SigningMethod) VerifierOption {
+// WithMethods 允许 jwt 使用传入的签名方法
+func (v *VerOption) WithMethods(methods ...jwt.SigningMethod) *VerOption {
 	algs := make([]string, len(methods))
 	for i, method := range methods {
 		algs[i] = method.Alg()
 	}
-	return func(verifier *Verifier) *Verifier {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
 		verifier.validSigningMethods = algs
 		return verifier
-	}
+	})
+	return v
 }
 
-func UseStructClaimsOption(claims jwt.Claims) VerifierOption {
+// WithStructClaim 使用 StructClaim
+// 例子：
+//	type MyClaim struct {
+//		jwt.StandardClaims
+//		Uid int64 `json:"uid,omitempty"`
+//		Sid int64 `json:"sid,omitempty"`
+// 	}
+// 	opt := VerOption{}
+//  jwt.NewVerifier(opt.WithStructClaim(MyClaim{}))
+func (v *VerOption) WithStructClaim(claims jwt.Claims) *VerOption {
 	if reflect.TypeOf(claims) == reflect.TypeOf(jwt.MapClaims{}) {
-		return func(verifier *Verifier) *Verifier {
-			return verifier // do nothing
-		}
+		return v
 	}
-	return func(verifier *Verifier) *Verifier {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
 		verifier.useClaims = claims
 		return verifier
-	}
+	})
+	return v
 }
 
-func init() {
-	SkipClaimVerifyOption = func(verifier *Verifier) *Verifier {
+// WithSkipVerifyClaim 不验证 jwt Claim 的有效性和用户自定义 Verifier 对其他字段的要求
+func (v *VerOption) WithSkipVerifyClaim() *VerOption {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
 		verifier.skipClaimVerify = true
 		return verifier
-	}
-
-	UseJSONNumberVerifyOption = func(verifier *Verifier) *Verifier {
-		verifier.useJSONNumber = true
-		return verifier
-	}
-
-	UseMapClaimsOption = func(verifier *Verifier) *Verifier {
-		verifier.useClaims = jwt.MapClaims{}
-		return verifier
-	}
-
-	AcceptNoneSigningOption = func(verifier *Verifier) *Verifier {
-		verifier.defaultKey = jwt.UnsafeAllowNoneSignatureType
-		return verifier
-	}
+	})
+	return v
 }
 
-func NewVerifier(options ...VerifierOption) *Verifier {
+func (v *VerOption) WithVerifyJSONumber() *VerOption {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
+		verifier.useJSONNumber = true
+		return verifier
+	})
+	return v
+}
+
+func (v *VerOption) WithMapClaim() *VerOption {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
+		verifier.useClaims = jwt.MapClaims{}
+		return verifier
+	})
+	return v
+}
+
+func (v *VerOption) WithNoneSigning() *VerOption {
+	v.ops = append(v.ops, func(verifier *Verifier) *Verifier {
+		verifier.defaultKey = jwt.UnsafeAllowNoneSignatureType
+		return verifier
+	})
+	return v
+}
+
+func NewVerifier(opt *VerOption) *Verifier {
 	v := &Verifier{}
-	for _, option := range options {
+	for _, option := range opt.ops {
 		v = option(v)
 	}
 	initVerifier(v)
@@ -174,49 +200,61 @@ func (v *Verifier) verifyTokenStr(jwtStr string) (*jwt.Token, []string, error) {
 	return token, parts, nil
 }
 
-func (v *Verifier) Verify(jwtStr string, key interface{}) error {
+func (v *Verifier) Verify(jwtStr string, key interface{}) (error, *Token) {
 	token, parts, err := v.verifyTokenStr(jwtStr)
 	if err != nil {
-		return err
+		return err, nil
 	}
 
 	// 防止这里使用 jwt.UnsafeAllowNoneSignatureType
 	if _, ok := key.(string); ok {
-		return errors.New("key cannot be string")
+		return errors.New("key cannot be string"), nil
 	}
-	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], key)
+	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], key), token
 }
 
-func (v *Verifier) VerifyWithDefaultKey(jwtStr string) error {
+// VerifyWithNonKey 不验证签名
+func (v *Verifier) VerifyWithNonKey(jwtStr string) (error, *Token) {
+	if v.defaultKey != jwt.UnsafeAllowNoneSignatureType {
+		return errors.New("not none key"), nil
+	}
+	token, parts, err := v.verifyTokenStr(jwtStr)
+	if err != nil {
+		return err, nil
+	}
+	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], v.defaultKey), token
+}
+
+func (v *Verifier) VerifyWithDefaultKey(jwtStr string) (error, *Token) {
 	if v.defaultKey == nil {
-		return errors.New("no default key")
+		return errors.New("no default key"), nil
 	}
 	token, parts, err := v.verifyTokenStr(jwtStr)
 	if err != nil {
-		return err
+		return err, nil
 	}
-	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], v.defaultKey)
+	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], v.defaultKey), token
 }
 
-func (v *Verifier) VerifyWithKid(jwtStr string) error {
+func (v *Verifier) VerifyWithKid(jwtStr string) (error, *Token) {
 	token, parts, err := v.verifyTokenStr(jwtStr)
 	if err != nil {
-		return err
+		return err, nil
 	}
 	var kid interface{}
 	var ok bool
 	if kid, ok = token.Header["kid"]; !ok {
-		return errors.New("cannot find kid in jwt header")
+		return errors.New("cannot find kid in jwt header"), nil
 	}
 	keyId, ok := kid.(string)
 	if !ok {
-		return errors.New("kid cannot cast to string")
+		return errors.New("kid cannot cast to string"), nil
 	}
 	var iss string
 	if c, ok := token.Claims.(jwt.MapClaims); ok {
 		iss, ok = c["iss"].(string)
 		if !ok {
-			return errors.New("iss cannot cast to string")
+			return errors.New("iss cannot cast to string"), nil
 		}
 	} else {
 		claims := token.Claims.(jwt.StandardClaims)
@@ -224,20 +262,18 @@ func (v *Verifier) VerifyWithKid(jwtStr string) error {
 	}
 
 	if iss == "" {
-		return errors.New("iss cannot be empty")
+		return errors.New("iss cannot be empty"), nil
 	}
 
 	if !strings.HasSuffix(iss, "/") {
-		iss = iss + "/"
+		iss = fmt.Sprintf("%s%s", iss, "/")
 	}
 
-	path := iss + JWKsRelativePath
-
-	publicKey, _, err := ParsePathToKey(path, keyId)
+	publicKey, _, err := ParsePathToKey(fmt.Sprintf("%s%s", iss, JWKsRelativePath), keyId)
 
 	if err != nil {
-		return err
+		return err, nil
 	}
 
-	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], publicKey)
+	return token.Method.Verify(strings.Join(parts[0:2], "."), parts[2], publicKey), token
 }

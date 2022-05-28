@@ -55,23 +55,35 @@ var verifyData = []struct {
 }
 
 func TestVerify(t *testing.T) {
-	verifier := NewVerifier(SkipClaimVerifyOption) // 不验证 Claims 的有效性 (即 是否过期|是否启用)
+	option := VerOption{}
+	verifier := NewVerifier(option.WithSkipVerifyClaim()) // 不验证 Claims 的有效性 (即 是否过期|是否启用)
 	for _, datum := range verifyData {
 		// 没有使用 kid
 		if datum.useKid == false {
 			if datum.key == nil {
 				datum.key, _ = jwt.ParseRSAPublicKeyFromPEM([]byte(defaultPublicKey))
 			}
-			err := verifier.Verify(datum.tokenStr, datum.key)
+			err, _ := verifier.Verify(datum.tokenStr, datum.key)
 			if (err != nil) != datum.wantErr {
 				t.Errorf("error while verify %v", datum)
 			}
 			continue
 		}
 		// 使用 kid，无需指定 key
-		err := verifier.VerifyWithKid(datum.tokenStr)
+		err, _ := verifier.VerifyWithKid(datum.tokenStr)
 		if (err != nil) != datum.wantErr {
 			t.Errorf("error while verify %v", datum)
+		}
+	}
+}
+
+func BenchmarkVerify(b *testing.B) {
+	option := VerOption{}
+	verifier := NewVerifier(option.WithSkipVerifyClaim())
+	for i := 0; i < b.N; i++ {
+		err, _ := verifier.Verify(verifyData[0].tokenStr, verifyData[0].key)
+		if err != nil {
+			panic(err)
 		}
 	}
 }
